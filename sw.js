@@ -26,7 +26,7 @@ self.addEventListener('install', event => {
         return url;
       })).catch(() => {
         // Partial cache is ok
-        return cache.addAll(['/rescue-app/index.html', '/rescue-app/app.js'].filter(u => !u.startsWith('https://')));
+              return cache.addAll(['index.html', 'app.js']);
       });
     })
   );

@@ -23,13 +23,13 @@
       "name": "SOS Alert",
       "short_name": "SOS",
       "description": "Trigger emergency SOS alert",
-      "url": "/rescue-app/index.html#sos"
+      "url": "./index.html#sos"
     },
     {
       "name": "Live Map",
       "short_name": "Map",
       "description": "View danger zone map",
-      "url": "/rescue-app/index.html#map"
+     "url": "./index.html#map"
     }
   ]
 }
