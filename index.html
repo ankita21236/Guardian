@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0f1a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>GUARDIAN — Emergency Response System</title>
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Bebas+Neue&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" defer crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg-deep: #04080f;
+    --bg-base: #080e1a;
+    --bg-card: #0d1526;
+    --bg-panel: #111d30;
+    --border: #1a2d4a;
+    --border-bright: #2a4a7a;
+    --accent-blue: #00a8ff;
+    --accent-cyan: #00e5ff;
+    --accent-green: #00ff9d;
+    --danger-red: #ff2244;
+    --danger-orange: #ff6600;
+    --warn-yellow: #ffcc00;
+    --text-primary: #e8f4ff;
+    --text-secondary: #7a9bc0;
+    --text-dim: #3a5a7a;
+    --sos-red: #ff0033;
+    --glow-blue: 0 0 20px rgba(0,168,255,0.3);
+    --glow-red: 0 0 30px rgba(255,0,51,0.5);
+    --glow-green: 0 0 20px rgba(0,255,157,0.3);
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-ui: 'Rajdhani', sans-serif;
+    --font-display: 'Bebas Neue', cursive;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  html, body {
+    height: 100%;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    font-family: var(--font-ui);
+    overflow: hidden;
+  }
+
+  /* scanline + atmosphere */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,168,255,0.015) 2px, rgba(0,168,255,0.015) 4px);
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* auth screen */
+  #auth-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-deep);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    flex-direction: column;
+  }
+
+  .auth-container {
+    width: 380px;
+    max-width: 95vw;
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    padding: 40px;
+    position: relative;
+    box-shadow: var(--glow-blue), inset 0 0 40px rgba(0,168,255,0.03);
+  }
+
+  .auth-container::before,
+  .auth-container::after {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    border-color: var(--accent-cyan);
+    border-style: solid;
+  }
+  .auth-container::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .auth-container::after { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+  .auth-logo {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .auth-logo .shield-icon {
+    font-size: 48px;
+    display: block;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 10px var(--accent-cyan));
+  }
+  .auth-logo h1 {
+    font-family: var(--font-display);
+    font-size: 2.8rem;
+    letter-spacing: 6px;
+    color: var(--accent-cyan);
+    text-shadow: var(--glow-blue);
+  }
+  .auth-logo p {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    letter-spacing: 3px;
+    margin-top: 4px;
+  }
+
+  .auth-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .auth-tab {
+    flex: 1;
+    padding: 10px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    cursor: pointer;
+    transition: all 0.2s;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .auth-tab.active {
+    color: var(--accent-cyan);
+    border-bottom-color: var(--accent-cyan);
+  }
+
+  .auth-form { display: none; }
+  .auth-form.active { display: block; }
+
+  .field-group {
+    margin-bottom: 16px;
+  }
+  .field-group label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .field-group input, .field-group select {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .field-group input:focus, .field-group select:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 10px rgba(0,229,255,0.1);
+  }
+  .field-group select option { background: var(--bg-card); }
+
+  .btn-primary {
+    width: 100%;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border: none;
+    color: var(--bg-deep);
+    padding: 12px;
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    letter-spacing: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .btn-primary:hover {
+    box-shadow: var(--glow-blue);
+    transform: translateY(-1px);
+  }
+  .btn-primary::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.15) 50%, transparent 70%);
+    transform: translateX(-100%);
+    transition: transform 0.4s;
+  }
+  .btn-primary:hover::after { transform: translateX(100%); }
+
+  .auth-error {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--danger-red);
+    margin-top: 10px;
+    text-align: center;
+    min-height: 18px;
+  }
+
+  .offline-badge {
+    position: absolute;
+    top: 12px; right: 12px;
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 1px;
+    color: var(--accent-green);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .offline-badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 8px var(--accent-green);
+    animation: pulse-dot 2s infinite;
+  }
+
+  /* main app layout */
+  #app {
+    display: none;
+    height: 100vh;
+    flex-direction: column;
+  }
+  #app.visible { display: flex; }
+
+  /* TOPBAR */
+  .topbar {
+    height: 52px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 16px;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 100;
+  }
+  .topbar-logo {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    letter-spacing: 4px;
+    color: var(--accent-cyan);
+    text-shadow: var(--glow-blue);
+    flex-shrink: 0;
+  }
+
+  .topbar-status {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex: 1;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    padding: 3px 8px;
+  }
+  .status-pill .dot {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .dot-green { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); animation: pulse-dot 2s infinite; }
+  .dot-red { background: var(--danger-red); box-shadow: 0 0 6px var(--danger-red); animation: pulse-dot 1s infinite; }
+  .dot-yellow { background: var(--warn-yellow); box-shadow: 0 0 6px var(--warn-yellow); }
+  .dot-blue { background: var(--accent-blue); box-shadow: 0 0 6px var(--accent-blue); }
+
+  .topbar-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+    cursor: pointer;
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    font-size: 0.9rem;
+    color: var(--bg-deep);
+    font-weight: 700;
+  }
+  .user-name {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+
+  /* MAIN CONTENT */
+  .main-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 280px;
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    font-size: 0.95rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+  }
+  .nav-item:hover { background: rgba(0,168,255,0.05); color: var(--text-primary); }
+  .nav-item.active {
+    color: var(--accent-cyan);
+    background: rgba(0,229,255,0.08);
+  }
+  .nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent-cyan);
+    box-shadow: var(--glow-blue);
+  }
+  .nav-icon { font-size: 1.1rem; width: 22px; text-align: center; }
+
+  .sidebar-info {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+  }
+  .sidebar-info::-webkit-scrollbar { width: 3px; }
+  .sidebar-info::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-info::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+  .info-card {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    padding: 12px;
+    margin-bottom: 10px;
+  }
+  .info-card-title {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+  .info-card-value {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-primary);
+    word-break: break-all;
+  }
+
+  .weather-widget {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .weather-title {
+    font-family: var(--font-mono);
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+  }
+  .weather-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  .weather-icon { font-size: 2rem; }
+  .weather-temp {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    color: var(--accent-cyan);
+  }
+  .weather-desc {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .weather-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .weather-stat {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .weather-stat span {
+    color: var(--text-primary);
+    font-size: 0.75rem;
+  }
+
+  .alert-list { display: flex; flex-direction: column; gap: 6px; }
+  .alert-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid;
+    font-size: 0.8rem;
+    font-weight: 600;
+    animation: fadeIn 0.3s;
+  }
+  .alert-item.red { border-color: var(--danger-red); background: rgba(255,34,68,0.08); color: var(--danger-red); }
+  .alert-item.yellow { border-color: var(--warn-yellow); background: rgba(255,204,0,0.08); color: var(--warn-yellow); }
+  .alert-item.blue { border-color: var(--accent-blue); background: rgba(0,168,255,0.08); color: var(--accent-blue); }
+  .alert-icon { flex-shrink: 0; margin-top: 1px; }
+
+  /* MAP SECTION */
+  .map-section {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  #map {
+    width: 100%;
+    height: 100%;
+  }
+
+  .map-overlay-tl {
+    position: absolute;
+    top: 12px; left: 12px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .map-btn {
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    color: var(--text-primary);
+    padding: 8px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 1px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+    backdrop-filter: blur(10px);
+  }
+  .map-btn:hover { background: var(--bg-panel); border-color: var(--accent-cyan); color: var(--accent-cyan); }
+
+  .map-legend {
+    position: absolute;
+    bottom: 12px; left: 12px;
+    z-index: 500;
+    background: rgba(8,14,26,0.9);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    backdrop-filter: blur(10px);
+  }
+  .legend-title { color: var(--text-dim); letter-spacing: 2px; margin-bottom: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; color: var(--text-secondary); }
+  .legend-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .legend-dot.red { background: rgba(255,34,68,0.6); border: 2px solid var(--danger-red); }
+  .legend-dot.yellow { background: rgba(255,204,0,0.4); border: 2px solid var(--warn-yellow); }
+  .legend-dot.green { background: rgba(0,255,157,0.3); border: 2px solid var(--accent-green); }
+
+  /* SOS BUTTON */
+  .sos-container {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    z-index: 600;
+  }
+
+  .sos-btn {
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ff4466, #cc0022);
+    border: 3px solid var(--danger-red);
+    color: white;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    position: relative;
+    box-shadow: var(--glow-red), 0 8px 32px rgba(255,0,51,0.4);
+    transition: all 0.1s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    user-select: none;
+  }
+  .sos-btn::before {
+    content: '';
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid rgba(255,0,51,0.3);
+    animation: sos-ring 2s infinite;
+  }
+  .sos-btn::after {
+    content: '';
+    position: absolute;
+    inset: -16px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,0,51,0.15);
+    animation: sos-ring 2s infinite 0.5s;
+  }
+  .sos-btn:active { transform: scale(0.93); box-shadow: var(--glow-red); }
+  .sos-label { font-family: var(--font-mono); font-size: 0.5rem; letter-spacing: 1px; opacity: 0.8; }
+
+  .sos-btn.triggered {
+    animation: sos-flash 0.5s infinite;
+  }
+
+  /* panels / views */
+  .panel {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: var(--bg-base);
+    overflow-y: auto;
+    z-index: 50;
+    padding: 24px;
+  }
+  .panel.visible { display: block; }
+  .panel::-webkit-scrollbar { width: 3px; }
+  .panel::-webkit-scrollbar-thumb { background: var(--border-bright); }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .panel-title {
+    font-family: var(--font-display);
+    font-size: 2rem;
+    letter-spacing: 4px;
+    color: var(--accent-cyan);
+  }
+  .panel-close {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 6px 14px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    cursor: pointer;
+    letter-spacing: 2px;
+  }
+  .panel-close:hover { border-color: var(--danger-red); color: var(--danger-red); }
+
+  .section-title {
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    letter-spacing: 3px;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+    text-transform: uppercase;
+  }
+
+  /* CONTACTS */
+  .contacts-grid { display: grid; gap: 10px; margin-bottom: 24px; }
+  .contact-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .contact-avatar {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+  }
+  .contact-info { flex: 1; }
+  .contact-name { font-weight: 700; font-size: 0.95rem; margin-bottom: 2px; }
+  .contact-role {
+    font-family: var(--font-mono);
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+  .contact-phone {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--accent-cyan);
+    margin-top: 4px;
+  }
+  .contact-actions { display: flex; gap: 6px; }
+  .contact-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 5px 8px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .contact-btn:hover { border-color: var(--accent-cyan); color: var(--accent-cyan); }
+  .contact-btn.danger:hover { border-color: var(--danger-red); color: var(--danger-red); }
+
+  .add-contact-form {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 16px;
+  }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  .btn-secondary {
+    background: none;
+    border: 1px solid var(--accent-cyan);
+    color: var(--accent-cyan);
+    padding: 8px 16px;
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 2px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-secondary:hover { background: rgba(0,229,255,0.1); }
+
+  /* SETTINGS */
+  .settings-grid { display: grid; gap: 12px; }
+  .setting-row {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .setting-label { font-weight: 600; font-size: 0.9rem; }
+  .setting-desc { font-family: var(--font-mono); font-size: 0.62rem; color: var(--text-secondary); margin-top: 2px; letter-spacing: 0.5px; }
+
+  /* Toggle */
+  .toggle {
+    width: 40px; height: 22px;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    position: relative;
+    cursor: pointer;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle.on { background: var(--accent-cyan); border-color: var(--accent-cyan); }
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle.on::after { transform: translateX(18px); background: var(--bg-deep); }
+
+  /* LOG */
+  .log-list { display: flex; flex-direction: column; gap: 6px; }
+  .log-entry {
+    display: flex;
+    gap: 12px;
+    padding: 10px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    align-items: flex-start;
+  }
+  .log-time { color: var(--text-dim); flex-shrink: 0; width: 55px; }
+  .log-msg { flex: 1; color: var(--text-secondary); }
+  .log-type { flex-shrink: 0; font-size: 0.65rem; letter-spacing: 1px; padding: 1px 5px; border: 1px solid; }
+  .log-type.sos { color: var(--danger-red); border-color: var(--danger-red); }
+  .log-type.warn { color: var(--warn-yellow); border-color: var(--warn-yellow); }
+  .log-type.info { color: var(--accent-blue); border-color: var(--accent-blue); }
+  .log-type.ok { color: var(--accent-green); border-color: var(--accent-green); }
+
+  /* sos modal */
+  .sos-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 900;
+    background: rgba(4,8,15,0.95);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+  .sos-modal.visible { display: flex; }
+  .sos-modal-box {
+    background: var(--bg-card);
+    border: 2px solid var(--danger-red);
+    box-shadow: var(--glow-red), 0 0 80px rgba(255,0,51,0.3);
+    padding: 40px;
+    max-width: 420px;
+    width: 90vw;
+    text-align: center;
+    animation: pulse-border 1s infinite;
+  }
+  .sos-modal-icon { font-size: 4rem; margin-bottom: 12px; }
+  .sos-modal-title {
+    font-family: var(--font-display);
+    font-size: 3rem;
+    letter-spacing: 8px;
+    color: var(--danger-red);
+    margin-bottom: 10px;
+  }
+  .sos-modal-subtitle {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    letter-spacing: 2px;
+    margin-bottom: 24px;
+  }
+  .sos-info {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    padding: 14px;
+    margin-bottom: 20px;
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.8;
+    color: var(--text-secondary);
+  }
+  .sos-info strong { color: var(--text-primary); }
+  .sos-actions { display: flex; gap: 12px; }
+  .btn-cancel {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 12px;
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-cancel:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+  .btn-send-sos {
+    flex: 2;
+    background: var(--danger-red);
+    border: none;
+    color: white;
+    padding: 12px;
+    font-family: var(--font-display);
+    font-size: 1.4rem;
+    letter-spacing: 4px;
+    cursor: pointer;
+    animation: sos-flash 1s infinite;
+    transition: all 0.2s;
+  }
+  .btn-send-sos:hover { background: #ff4466; }
+
+  /* ZONE ALERT BANNER */
+  .zone-banner {
+    display: none;
+    position: fixed;
+    top: 52px; left: 0; right: 0;
+    z-index: 800;
+    padding: 10px 20px;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 2px;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+  }
+  .zone-banner.red {
+    display: flex;
+    background: rgba(255,34,68,0.9);
+    color: white;
+    animation: banner-flash 1s infinite;
+  }
+  .zone-banner.yellow {
+    display: flex;
+    background: rgba(255,204,0,0.9);
+    color: var(--bg-deep);
+  }
+  .zone-banner-close {
+    background: none;
+    border: 1px solid currentColor;
+    color: inherit;
+    padding: 2px 8px;
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 0.65rem;
+    margin-left: auto;
+  }
+
+  /* animations */
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+  @keyframes sos-ring {
+    0% { transform: scale(1); opacity: 0.6; }
+    100% { transform: scale(1.4); opacity: 0; }
+  }
+  @keyframes sos-flash {
+    0%, 100% { box-shadow: var(--glow-red), 0 0 40px rgba(255,0,51,0.5); }
+    50% { box-shadow: 0 0 60px rgba(255,0,51,0.9), 0 0 120px rgba(255,0,51,0.4); }
+  }
+  @keyframes pulse-border {
+    0%, 100% { border-color: var(--danger-red); }
+    50% { border-color: rgba(255,0,51,0.4); }
+  }
+  @keyframes banner-flash {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.75; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  /* Leaflet overrides */
+  .leaflet-container { background: #0a1020 !important; }
+  .leaflet-tile { filter: hue-rotate(180deg) invert(0.9) brightness(0.7) saturate(1.5); }
+  .leaflet-control-zoom a {
+    background: var(--bg-card) !important;
+    border-color: var(--border) !important;
+    color: var(--text-primary) !important;
+  }
+  .leaflet-control-attribution { display: none; }
+  .leaflet-popup-content-wrapper {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border-bright) !important;
+    border-radius: 0 !important;
+    color: var(--text-primary) !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.75rem !important;
+    box-shadow: var(--glow-blue) !important;
+  }
+  .leaflet-popup-tip { background: var(--bg-card) !important; }
+
+  /* Mobile responsive */
+  @media (max-width: 768px) {
+    .sidebar { width: 220px; }
+    .topbar-status { display: none; }
+  }
+  @media (max-width: 600px) {
+    .sidebar { display: none; }
+    #app.sidebar-open .sidebar { display: flex; position: fixed; inset: 52px 0 0 0; z-index: 400; width: 100%; }
+    .sos-btn { width: 75px; height: 75px; }
+  }
+
+  .loading-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-deep);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    z-index: 2000;
+    transition: opacity 0.5s;
+  }
+  .loading-screen.hidden { opacity: 0; pointer-events: none; }
+  .loader-ring {
+    width: 60px; height: 60px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent-cyan);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 20px;
+  }
+  .loader-text {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 3px;
+    color: var(--text-secondary);
+  }
+</style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loading-screen" id="loading">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loader-msg">INITIALIZING GUARDIAN...</div>
+</div>
+
+<!-- AUTH SCREEN -->
+<div id="auth-screen" style="display:none;">
+  <div class="auth-container">
+    <div class="offline-badge">OFFLINE READY</div>
+    <div class="auth-logo">
+      <span class="shield-icon">🛡️</span>
+      <h1>GUARDIAN</h1>
+      <p>EMERGENCY RESPONSE SYSTEM</p>
+    </div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" onclick="switchTab('login')">LOGIN</div>
+      <div class="auth-tab" onclick="switchTab('register')">REGISTER</div>
+    </div>
+
+    <!-- LOGIN -->
+    <div class="auth-form active" id="form-login">
+      <div class="field-group">
+        <label>USERNAME / ID</label>
+        <input type="text" id="login-user" placeholder="Enter your ID" autocomplete="off">
+      </div>
+      <div class="field-group">
+        <label>PASSWORD</label>
+        <input type="password" id="login-pass" placeholder="••••••••">
+      </div>
+      <button class="btn-primary" onclick="doLogin()">ACCESS SYSTEM</button>
+      <div class="auth-error" id="login-error"></div>
+    </div>
+
+    <!-- REGISTER -->
+    <div class="auth-form" id="form-register">
+      <div class="field-group">
+        <label>FULL NAME</label>
+        <input type="text" id="reg-name" placeholder="Your full name">
+      </div>
+      <div class="field-group">
+        <label>USERNAME</label>
+        <input type="text" id="reg-user" placeholder="Choose a username">
+      </div>
+      <div class="field-group">
+        <label>PASSWORD</label>
+        <input type="password" id="reg-pass" placeholder="Min 8 characters">
+      </div>
+      <div class="field-group">
+        <label>ROLE</label>
+        <select id="reg-role">
+          <option value="survivor">Survivor / Civilian</option>
+          <option value="responder">First Responder</option>
+          <option value="volunteer">Volunteer</option>
+          <option value="coordinator">Coordinator</option>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>EMERGENCY PHONE</label>
+        <input type="tel" id="reg-phone" placeholder="+91 XXXXXXXXXX">
+      </div>
+      <button class="btn-primary" onclick="doRegister()">CREATE ACCOUNT</button>
+      <div class="auth-error" id="reg-error"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ZONE ALERT BANNER -->
+<div class="zone-banner" id="zone-banner">
+  <span id="zone-banner-icon">⚠️</span>
+  <span id="zone-banner-text">YOU ARE IN A DANGER ZONE</span>
+  <button class="zone-banner-close" onclick="dismissBanner()">✕</button>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-logo">GUARDIAN</div>
+    <div class="topbar-status">
+      <div class="status-pill"><div class="dot dot-green"></div><span id="gps-status-text">GPS ACQUIRING</span></div>
+      <div class="status-pill"><div class="dot dot-blue" id="conn-dot"></div><span id="conn-text">ONLINE</span></div>
+      <div class="status-pill"><div class="dot dot-yellow"></div><span id="zone-status">ZONE: SAFE</span></div>
+    </div>
+    <div class="topbar-user" onclick="showPanel('settings-panel')">
+      <div class="user-avatar" id="user-avatar-top">?</div>
+      <div class="user-name" id="user-name-top">USER</div>
+    </div>
+    <button style="background:none;border:1px solid var(--border);color:var(--text-secondary);padding:5px 10px;font-family:var(--font-mono);font-size:0.65rem;cursor:pointer;letter-spacing:1px;margin-left:8px;" onclick="doLogout()">LOGOUT</button>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <nav class="sidebar-nav">
+        <div class="nav-item active" onclick="showView('map')"><span class="nav-icon">🗺️</span>LIVE MAP</div>
+        <div class="nav-item" onclick="showPanel('contacts-panel')"><span class="nav-icon">📞</span>CONTACTS</div>
+        <div class="nav-item" onclick="showPanel('alerts-panel')"><span class="nav-icon">⚡</span>ALERTS</div>
+        <div class="nav-item" onclick="showPanel('log-panel')"><span class="nav-icon">📋</span>EVENT LOG</div>
+        <div class="nav-item" onclick="showPanel('settings-panel')"><span class="nav-icon">⚙️</span>SETTINGS</div>
+      </nav>
+      <div class="sidebar-info">
+        <!-- LOCATION -->
+        <div class="info-card">
+          <div class="info-card-title">◈ YOUR LOCATION</div>
+          <div class="info-card-value" id="coord-display">Acquiring...</div>
+        </div>
+        <!-- ZONE STATUS -->
+        <div class="info-card" id="zone-card">
+          <div class="info-card-title">◈ ZONE STATUS</div>
+          <div class="info-card-value" id="zone-card-value" style="color:var(--accent-green)">✓ SAFE ZONE</div>
+        </div>
+        <!-- WEATHER -->
+        <div class="weather-widget" id="weather-widget">
+          <div class="weather-title">◈ WEATHER CONDITIONS</div>
+          <div class="weather-main">
+            <div class="weather-icon" id="w-icon">🌤️</div>
+            <div>
+              <div class="weather-temp" id="w-temp">--°</div>
+              <div class="weather-desc" id="w-desc">Loading...</div>
+            </div>
+          </div>
+          <div class="weather-grid">
+            <div class="weather-stat">HUMIDITY<span id="w-hum">--%</span></div>
+            <div class="weather-stat">WIND<span id="w-wind">-- km/h</span></div>
+            <div class="weather-stat">VISIBILITY<span id="w-vis">-- km</span></div>
+            <div class="weather-stat">PRESSURE<span id="w-pres">-- hPa</span></div>
+          </div>
+        </div>
+        <!-- ALERTS -->
+        <div>
+          <div class="info-card-title" style="padding:0 0 6px 0;">◈ ACTIVE ALERTS</div>
+          <div class="alert-list" id="sidebar-alerts"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAP + PANELS -->
+    <div class="map-section">
+      <div id="map"></div>
+
+      <!-- MAP CONTROLS -->
+      <div class="map-overlay-tl">
+        <button class="map-btn" onclick="centerOnUser()">📍 MY LOCATION</button>
+        <button class="map-btn" onclick="toggleZones()">🔴 TOGGLE ZONES</button>
+        <button class="map-btn" onclick="refreshWeather()">🌡 REFRESH DATA</button>
+      </div>
+
+      <!-- LEGEND -->
+      <div class="map-legend">
+        <div class="legend-title">ZONE LEGEND</div>
+        <div class="legend-item"><div class="legend-dot red"></div>RED — HIGH DANGER</div>
+        <div class="legend-item"><div class="legend-dot yellow"></div>YELLOW — CAUTION</div>
+        <div class="legend-item"><div class="legend-dot green"></div>GREEN — SAFE ZONE</div>
+      </div>
+
+      <!-- SOS BUTTON -->
+      <div class="sos-container">
+        <button class="sos-btn" id="sos-btn" onclick="triggerSOS()" aria-label="SOS — Hold to alert">
+          SOS
+          <span class="sos-label">HOLD TO ALERT</span>
+        </button>
+      </div>
+
+      <!-- PANELS (overlay on map area) -->
+      <div class="panel" id="contacts-panel">
+        <div class="panel-header">
+          <div class="panel-title">CONTACTS</div>
+          <button class="panel-close" onclick="closePanel('contacts-panel')">✕ CLOSE</button>
+        </div>
+        <div class="section-title">◈ EMERGENCY AUTHORITIES</div>
+        <div class="contacts-grid" id="authority-contacts"></div>
+        <div class="section-title" style="margin-top:20px;">◈ PERSONAL CONTACTS</div>
+        <div class="contacts-grid" id="personal-contacts"></div>
+        <div class="section-title" style="margin-top:20px;">◈ ADD CONTACT</div>
+        <div class="add-contact-form">
+          <div class="form-row">
+            <div class="field-group"><label>NAME</label><input type="text" id="nc-name" placeholder="Contact name"></div>
+            <div class="field-group"><label>PHONE</label><input type="tel" id="nc-phone" placeholder="+91 XXXXXXXXXX"></div>
+          </div>
+          <div class="form-row">
+            <div class="field-group"><label>RELATION</label><input type="text" id="nc-rel" placeholder="Friend / Family"></div>
+            <div class="field-group">
+              <label>TYPE</label>
+              <select id="nc-type">
+                <option value="personal">Personal</option>
+                <option value="authority">Authority</option>
+                <option value="volunteer">Volunteer</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn-secondary" onclick="addContact()">+ ADD CONTACT</button>
+        </div>
+      </div>
+
+      <div class="panel" id="alerts-panel">
+        <div class="panel-header">
+          <div class="panel-title">ALERTS</div>
+          <button class="panel-close" onclick="closePanel('alerts-panel')">✕ CLOSE</button>
+        </div>
+        <div class="section-title">◈ ACTIVE ALERTS</div>
+        <div id="full-alerts-list"></div>
+      </div>
+
+      <div class="panel" id="log-panel">
+        <div class="panel-header">
+          <div class="panel-title">EVENT LOG</div>
+          <button class="panel-close" onclick="closePanel('log-panel')">✕ CLOSE</button>
+        </div>
+        <div class="section-title">◈ SYSTEM LOG</div>
+        <div class="log-list" id="log-list"></div>
+      </div>
+
+      <div class="panel" id="settings-panel">
+        <div class="panel-header">
+          <div class="panel-title">SETTINGS</div>
+          <button class="panel-close" onclick="closePanel('settings-panel')">✕ CLOSE</button>
+        </div>
+        <div class="section-title">◈ USER PROFILE</div>
+        <div class="info-card" style="margin-bottom:20px;">
+          <div class="info-card-value" id="profile-info"></div>
+        </div>
+        <div class="section-title">◈ SYSTEM PREFERENCES</div>
+        <div class="settings-grid" id="settings-grid">
+          <div class="setting-row">
+            <div><div class="setting-label">LOCATION TRACKING</div><div class="setting-desc">Continuous GPS updates every 10s</div></div>
+            <div class="toggle on" id="toggle-gps" onclick="toggleSetting('gps')"></div>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-label">ZONE ALERTS</div><div class="setting-desc">Notify when entering danger zones</div></div>
+            <div class="toggle on" id="toggle-zones" onclick="toggleSetting('zone-alerts')"></div>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-label">WEATHER MONITORING</div><div class="setting-desc">Auto-refresh weather every 5 min</div></div>
+            <div class="toggle on" id="toggle-weather" onclick="toggleSetting('weather')"></div>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-label">SOS BROADCAST</div><div class="setting-desc">Send to all contacts + authorities</div></div>
+            <div class="toggle on" id="toggle-sos-all" onclick="toggleSetting('sos-all')"></div>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-label">OFFLINE CACHE</div><div class="setting-desc">Store map tiles for offline use</div></div>
+            <div class="toggle on" id="toggle-offline" onclick="toggleSetting('offline')"></div>
+          </div>
+        </div>
+        <div style="margin-top:24px;">
+          <div class="section-title">◈ DANGER ZONE RADIUS</div>
+          <div class="setting-row">
+            <div><div class="setting-label">RED ZONE RADIUS</div><div class="setting-desc">Alert distance in km</div></div>
+            <select id="red-radius" style="background:var(--bg-base);border:1px solid var(--border);color:var(--text-primary);padding:6px;font-family:var(--font-mono);font-size:0.75rem;" onchange="saveSettings()">
+              <option value="2">2 km</option>
+              <option value="5" selected>5 km</option>
+              <option value="10">10 km</option>
+              <option value="20">20 km</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SOS MODAL -->
+<div class="sos-modal" id="sos-modal">
+  <div class="sos-modal-box">
+    <div class="sos-modal-icon">🚨</div>
+    <div class="sos-modal-title">SOS ALERT</div>
+    <div class="sos-modal-subtitle">EMERGENCY BROADCAST READY</div>
+    <div class="sos-info" id="sos-info-box">
+      <strong>USER:</strong> Loading...<br>
+      <strong>LOCATION:</strong> Acquiring GPS...<br>
+      <strong>COORDS:</strong> --<br>
+      <strong>TIME:</strong> --<br>
+      <strong>ZONE:</strong> --<br>
+      <strong>WEATHER:</strong> --<br>
+      <strong>NOTIFY:</strong> All contacts + Nearest authorities
+    </div>
+    <div class="sos-actions">
+      <button class="btn-cancel" onclick="cancelSOS()">CANCEL</button>
+      <button class="btn-send-sos" onclick="confirmSOS()">SEND SOS</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
